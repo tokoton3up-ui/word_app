@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>単語カード</title>
+  <style>
+    body {
+      margin: 0;
+      background: #ffffff;
+      font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+
+    .screen {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: 70px; /* 上部ボタンとの余白を拡大 */
+      box-sizing: border-box;
+      position: relative;
+    }
+
+    /* --- 上部操作アイコン類（全体的に拡大＆押しやすく） --- */
+    .back-button {
+      position: absolute;
+      top: 15px;
+      left: 18px;
+      font-size: 32pt;
+      color: #555;
+      cursor: pointer;
+      line-height: 1;
+      padding: 5px;
+    }
+
+    .reset-btn {
+      position: absolute;
+      top: 18px;
+      right: 130px;
+      font-size: 26pt;
+      color: #555;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .settings-btn {
+      position: absolute;
+      top: 18px;
+      right: 75px;
+      font-size: 26pt;
+      color: #555;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    .speaker {
+      position: absolute;
+      top: 18px;
+      right: 20px;
+      font-size: 28pt;
+      color: #555;
+      user-select: none;
+      cursor: pointer;
+      padding: 5px;
+    }
+
+    /* 設定パネル */
+    .settings-panel {
+      position: absolute;
+      top: 70px;
+      right: 20px;
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 100;
+      font-size: 14pt;
+    }
+    .settings-panel input[type="range"] {
+      width: 150px;
+      height: 25px;
+      margin-top: 8px;
+    }
+    .hidden { display: none; }
+
+    /* --- 単語カード本体（サイズを約2倍に拡大） --- */
+    .card {
+      width: 88%;
+      max-width: 500px;
+      min-height: 220px; /* カードの高さを拡大 */
+      background: #F5F5F0;
+      border-radius: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 38pt; /* 単語の文字サイズを大幅拡大 */
+      font-weight: bold;
+      color: #222;
+      text-align: center;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-sizing: border-box;
+      word-break: break-word;
+      cursor: pointer;
+    }
+
+    /* 進捗表示 */
+    .progress {
+      font-size: 18pt; /* 文字拡大 */
+      font-weight: bold;
+      color: #555;
+      margin-bottom: 20px;
+    }
+
+    /* 覚えたボタン（大きく押しやすく） */
+    .learned-btn {
+      font-size: 18pt;
+      font-weight: bold;
+      padding: 14px 40px;
+      margin-bottom: 25px;
+      border: none;
+      border-radius: 12px;
+      background: #d0e8d0;
+      color: #2e5a2e;
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .learned-btn:active {
+      transform: scale(0.96);
+      background: #b8dcb8;
+    }
+
+    /* --- 矢印ナビゲーション（▶ に変更＆拡大） --- */
+    .arrow-area {
+      display: flex;
+      width: 85%;
+      max-width: 450px;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .arrow {
+      font-size: 36pt; /* 矢印を大きく拡大 */
+      color: #555;
+      user-select: none;
+      cursor: pointer;
+      padding: 10px 20px;
+    }
+    .arrow:active {
+      opacity: 0.5;
+    }
+
+    /* キャラクター */
+    .character {
+      position: absolute;
+      bottom: 10px;
+      left: 10px;
+      width: 120px; /* サイズ調整 */
+      opacity: 0.9;
+      pointer-events: none;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="screen">
+    <!-- 戻るボタン -->
+    <div class="back-button" onclick="goBack()">×</div>
+
+    <!-- 各種操作ボタン -->
+    <div class="reset-btn" onclick="resetExcluded()">↺</div>
+    <div class="settings-btn" onclick="toggleSettings()">⚙</div>
+    <div class="speaker" onclick="playSound()">🔊</div>
+
+    <!-- 設定パネル -->
+    <div id="settings-panel" class="settings-panel hidden">
+      <label>発音速度</label><br>
+      <input type="range" id="speed-range" min="0.5" max="1.5" step="0.1">
+    </div>
+
+    <!-- カード本体 -->
+    <div id="card" class="card" onclick="flipCard()"></div>
+
+    <!-- 進捗 -->
+    <div id="progress" class="progress"></div>
+
+    <!-- 覚えたボタン -->
+    <button id="btn-learned" class="learned-btn">覚えた</button>
+
+    <!-- 矢印エリア（◀ と ▶ に変更） -->
+    <div class="arrow-area">
+      <div class="arrow" onclick="prevCard()">◀</div>
+      <div class="arrow" onclick="nextCard()">▶</div>
+    </div>
+
+    <!-- キャラクター画像（必要に応じて表示） -->
+    <img src="character.png" class="character" onerror="this.style.display='none'">
+  </div>
+
+<script>
+  /* --- URL パラメータの取得 --- */
+  const params = new URLSearchParams(location.search);
+  const targetUrl = params.get("url");
+  const startIndex = params.get("startIndex") || "";
+
+  /* --- 教材IDの生成 --- */
+  function materialIdFromUrl(url){
+    try{ return btoa(unescape(encodeURIComponent(url))).replace(/=+$/,""); }
+    catch(e){ return encodeURIComponent(url).replace(/[^a-zA-Z0-9]/g,'_'); }
+  }
+  const materialId = targetUrl ? materialIdFromUrl(targetUrl) : "default";
+  const EXCLUDED_KEY = `excluded_${materialId}_card`;
+
+  /* CSV 読み込み */
+  async function loadCSV(file) {
+    const res = await fetch(file);
+    if (!res.ok) throw new Error("Network response was not ok");
+    const text = await res.text();
+    return text.trim().split("\n").map(line => {
+      const [q, a] = line.split(",");
+      return { q, a };
+    }).filter(item => item && item.q && item.a);
+  }
+
+  /* --- スマホ対策：英語ボイスの厳格な取得 --- */
+  let englishVoice = null;
+  function updateEnglishVoice() {
+    const voices = speechSynthesis.getVoices();
+    if (!voices.length) return;
+    
+    // 英語（en）で始まり、中国語などの誤判定を除外した最も適切なボイスを選択
+    englishVoice =
+      voices.find(v => (v.lang === "en-US" || v.lang === "en_US") && v.name.toLowerCase().includes("female")) ||
+      voices.find(v => v.lang.startsWith("en") && (v.lang.includes("US") || v.lang.includes("GB"))) ||
+      voices.find(v => v.lang.startsWith("en")) ||
+      null;
+  }
+
+  if ('speechSynthesis' in window) {
+    speechSynthesis.onvoiceschanged = updateEnglishVoice;
+    updateEnglishVoice();
+  }
+
+  let words = [];
+  let index = 0;
+  let showingFront = true;
+
+  let excluded = JSON.parse(localStorage.getItem(EXCLUDED_KEY) || "[]");
+  let speechSpeed = Number(localStorage.getItem("speechSpeed") || 1.0);
+
+  const cardEl = document.getElementById("card");
+  const progressEl = document.getElementById("progress");
+
+  document.getElementById("speed-range").value = speechSpeed;
+  document.getElementById("speed-range").oninput = (e) => {
+    speechSpeed = Number(e.target.value);
+    localStorage.setItem("speechSpeed", speechSpeed);
+  };
+
+  function toggleSettings() {
+    document.getElementById("settings-panel").classList.toggle("hidden");
+  }
+
+  function updateCard() {
+    if (words.length === 0) {
+      cardEl.textContent = "すべて覚えました！";
+      cardEl.style.fontSize = "24pt";
+      progressEl.textContent = "";
+      return;
+    }
+    cardEl.style.fontSize = "38pt"; // 通常の文字サイズ
+    const item = words[index];
+    cardEl.textContent = showingFront ? item.q : item.a;
+    progressEl.textContent = `${index + 1} / ${words.length}`;
+  }
+
+  function flipCard() {
+    showingFront = !showingFront;
+    updateCard();
+  }
+
+  function nextCard() {
+    if (index < words.length - 1) {
+      index++;
+      showingFront = true;
+      updateCard();
+    }
+  }
+
+  function prevCard() {
+    if (index > 0) {
+      index--;
+      showingFront = true;
+      updateCard();
+    }
+  }
+
+  document.getElementById("btn-learned").onclick = () => {
+    if (!words.length) return;
+    const item = words[index];
+    excluded.push(item.q);
+    localStorage.setItem(EXCLUDED_KEY, JSON.stringify(excluded));
+
+    words.splice(index, 1);
+
+    if (index >= words.length) index = words.length - 1;
+    showingFront = true;
+    updateCard();
+  };
+
+  /* --- スマホ対応版 音声再生機能 --- */
+  function playSound() {
+    if (!words.length || !('speechSynthesis' in window)) return;
+
+    // 連打時の音声詰まり防止
+    speechSynthesis.cancel();
+
+    const item = words[index];
+    // 音声読み上げ対象（CSVの裏面/英単語データを再生）
+    const utter = new SpeechSynthesisUtterance(item.a);
+    utter.lang = "en-US"; // 言語を英語（米国）に厳格固定
+    utter.rate = speechSpeed;
+
+    updateEnglishVoice();
+    if (englishVoice) {
+      utter.voice = englishVoice;
+    }
+
+    speechSynthesis.speak(utter);
+  }
+
+  function resetExcluded() {
+    if (confirm("この教材の「覚えた」状態をリセットしますか？")) {
+      localStorage.removeItem(EXCLUDED_KEY);
+      alert("リセットしました");
+      location.reload();
+    }
+  }
+
+  function goBack() {
+    if (targetUrl) {
+      let backUrl = `mode-select.html?url=${encodeURIComponent(targetUrl)}`;
+      if (startIndex) backUrl += `&startIndex=${startIndex}`;
+      location.href = backUrl;
+    } else {
+      location.href = 'mode-select.html';
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", async () => {
+    if (!targetUrl) {
+      cardEl.textContent = "教材が選択されていません";
+      cardEl.style.fontSize = "20pt";
+      return;
+    }
+    try {
+      let data = await loadCSV(targetUrl);
+      words = data.filter(item => !excluded.includes(item.q));
+      updateCard();
+    } catch (e) {
+      console.error(e);
+      cardEl.textContent = "教材の読み込みに失敗しました";
+      cardEl.style.fontSize = "18pt";
+    }
+  });
+</script>
+
+</body>
+</html>
