@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>まるクマの暗記学習</title>
+<style>
+  body {
+    margin: 0;
+    padding: 20px;
+    background: #f3f5e9;
+    font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+    color: #222;
+  }
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding-top: 20px;
+  }
+  h1 {
+    text-align: center;
+    font-size: 24pt;
+    margin-bottom: 24px;
+  }
+  #list {
+    margin-top: 20px;
+  }
+  .item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fff;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+  }
+  .left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    cursor: pointer;
+  }
+  .title {
+    font-weight: bold;
+    font-size: 14pt;
+    word-break: break-word;
+  }
+  .url {
+    font-size: 11px;
+    color: #666;
+  }
+  .menu {
+    position: relative;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .menu-dropdown {
+    position: absolute;
+    right: 0;
+    top: 40px;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    min-width: 150px;
+    display: none;
+    z-index: 20;
+  }
+  .menu-dropdown button {
+    width: 100%;
+    padding: 12px;
+    border: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .empty {
+    text-align: center;
+    color: #777;
+    padding: 40px 10px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>まるクマの暗記学習</h1>
+  <div id="list"></div>
+</div>
+
+<script>
+/* ストレージキー */
+const STORAGE_KEY = "materials_list_v1";
+
+/* ユーティリティ */
+function loadMaterials(){ try{ return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"); }catch(e){return [];} }
+function saveMaterials(list){ localStorage.setItem(STORAGE_KEY, JSON.stringify(list)); }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function getParam(name){ return new URLSearchParams(location.search).get(name); }
+
+/* 描画 */
+const listEl = document.getElementById("list");
+function render(){
+  const list = loadMaterials();
+  listEl.innerHTML = "";
+  if (!list.length){ 
+    listEl.innerHTML = '<div class="empty">教材がありません。<br>URLから教材を登録してください。</div>'; 
+    return; 
+  }
+  list.forEach((m, idx) => {
+    const item = document.createElement("div"); item.className = "item";
+    
+    // 左側（クリックで開くエリア）
+    const left = document.createElement("div"); left.className = "left";
+    left.onclick = () => openMaterialAt(idx);
+    
+    const title = document.createElement("div");
+    title.innerHTML = `<div class="title">${escapeHtml(m.name || m.url.split('/').pop())}</div><div class="url">${escapeHtml(m.url)}</div>`;
+    left.appendChild(title);
+    
+    // 右側（メニューボタン）
+    const menu = document.createElement("div"); menu.className = "menu";
+    menu.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;"><span style="width:4px;height:4px;background:#333;border-radius:50%;margin:2px 0"></span><span style="width:4px;height:4px;background:#333;border-radius:50%;margin:2px 0"></span><span style="width:4px;height:4px;background:#333;border-radius:50%;margin:2px 0"></span></div>';
+    
+    const dropdown = document.createElement("div"); dropdown.className = "menu-dropdown";
+    dropdown.innerHTML = `<button data-action="remove">この教材を削除</button><button data-action="reset">進捗をリセット</button>`;
+    menu.appendChild(dropdown);
+    
+    menu.addEventListener("click", ev => { 
+      ev.stopPropagation(); 
+      const shown = dropdown.style.display === "block"; 
+      closeAllDropdowns(); 
+      dropdown.style.display = shown ? "none" : "block"; 
+    });
+    
+    dropdown.addEventListener("click", ev => { 
+      ev.stopPropagation(); 
+      const action = ev.target.getAttribute("data-action"); 
+      if(action==="remove") removeMaterial(idx); 
+      if(action==="reset") resetProgress(idx); 
+      dropdown.style.display="none"; 
+    });
+    
+    item.appendChild(left); 
+    item.appendChild(menu); 
+    listEl.appendChild(item);
+  });
+}
+
+function closeAllDropdowns(){ document.querySelectorAll(".menu-dropdown").forEach(d=>d.style.display="none"); }
+document.addEventListener("click", closeAllDropdowns);
+
+/* 操作 */
+function removeMaterial(index){
+  if (!confirm("この教材を生徒の一覧から完全に削除しますか？")) return;
+  const list = loadMaterials(); const mat = list.splice(index,1)[0]; saveMaterials(list);
+  const id = materialIdFromUrl(mat.url);
+  ['progress','excluded','wrong'].forEach(k => localStorage.removeItem(`${k}_${id}_card`));
+  ['progress','excluded','wrong'].forEach(k => localStorage.removeItem(`${k}_${id}_spell`));
+  render();
+}
+
+/* 進捗リセット */
+function resetProgress(index){
+  if (!confirm("この教材の進捗をリセットしますか？")) return;
+  const list = loadMaterials(); const mat = list[index]; const id = materialIdFromUrl(mat.url);
+  ['progress','excluded','wrong'].forEach(k => localStorage.removeItem(`${k}_${id}_card`));
+  ['progress','excluded','wrong'].forEach(k => localStorage.removeItem(`${k}_${id}_spell`));
+  alert("進捗をリセットしました");
+}
+
+/* 教材を開く（mode-select.htmlへ遷移） */
+function openMaterialAt(index){
+  const list = loadMaterials();
+  if (!list || index < 0 || index >= list.length) return;
+  const mat = list[index];
+  window.location.href = `mode-select.html?url=${encodeURIComponent(mat.url)}&startIndex=${index}`;
+}
+
+/* 自動再開 */
+function autoOpenIfResume(){
+  const resume = getParam('resumeIndex');
+  if (!resume) return;
+  const idx = Number(resume);
+  if (Number.isNaN(idx)) return;
+  setTimeout(()=> openMaterialAt(idx), 300);
+}
+
+/* materialId ユーティリティ */
+function materialIdFromUrl(url){
+  try{ return btoa(unescape(encodeURIComponent(url))).replace(/=+$/,""); }
+  catch(e){ return encodeURIComponent(url).replace(/[^a-zA-Z0-9]/g,'_'); }
+}
+
+/* 初期化 */
+document.addEventListener("DOMContentLoaded", () => {
+  const urlParam = getParam('url');
+  if (urlParam) {
+    const list = loadMaterials();
+    const exists = list.some(m => m.url === urlParam);
+    if (!exists) {
+      // urlパラメータに渡されたCSVをリストに自動登録
+      const nameParam = getParam('name') || urlParam.split('/').pop().replace('.csv', '');
+      list.push({ name: nameParam, url: urlParam });
+      saveMaterials(list);
+    }
+  }
+
+  render(); 
+  autoOpenIfResume(); 
+});
+</script>
+</body>
+</html>

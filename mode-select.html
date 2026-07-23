@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>学習モード選択 - まるクマの暗記学習</title>
+
+<!-- ファビコン -->
+<link rel="icon" href="favicon1.png" type="image/png">
+<link rel="apple-touch-icon" href="favicon1.png">
+
+<style>
+  body {
+    margin: 0;
+    padding: 0;
+    background: #f3f5e9;
+    font-family: "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+    color: #222;
+  }
+
+  .header {
+    text-align: center;
+    padding: 30px 16px 10px;
+    font-size: 18pt;
+    font-weight: bold;
+    word-break: break-word;
+  }
+
+  .subtitle {
+    text-align: center;
+    font-size: 11pt;
+    color: #666;
+    margin-bottom: 24px;
+  }
+
+  /* キャラクター画像エリア */
+  .chara-container {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .chara-img {
+    max-width: 140px;
+    height: auto;
+  }
+
+  .mode-btn {
+    width: 80%;
+    max-width: 400px;
+    margin: 12px auto;
+    padding: 16px 0;
+    background: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    text-align: center;
+    font-size: 14pt;
+    color: #222;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .mode-btn:active {
+    transform: scale(0.97);
+    opacity: 0.8;
+  }
+
+  .back-btn {
+    position: absolute;
+    top: 14px;
+    left: 14px;
+    font-size: 12pt;
+    color: #444;
+    cursor: pointer;
+    padding: 6px 10px;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+</style>
+</head>
+
+<body>
+
+<div class="back-btn" onclick="goBack()">← 戻る</div>
+
+<div class="header" id="lessonName">読み込み中...</div>
+<div class="subtitle">学習モードを選んでください</div>
+
+<!-- くまのキャラクター画像（必要に応じて表示） -->
+<div class="chara-container">
+  <img src="kuma.png" alt="キャラクター" class="chara-img" onerror="this.style.display='none'">
+</div>
+
+<!-- モード選択ボタン一覧 -->
+<div class="mode-btn" onclick="goMode('card.html')">単語カード</div>
+<div class="mode-btn" onclick="goMode('choice4.html?mode=en2ja')">四択（英語 → 日本語）</div>
+<div class="mode-btn" onclick="goMode('choice4.html?mode=ja2en')">四択（日本語 → 英語）</div>
+<div class="mode-btn" onclick="goMode('pairing.html')">ペアリング</div>
+<div class="mode-btn" onclick="goMode('spell.html')">スペリング</div>
+
+<script>
+  // URL からパラメータを取得（url または material の両方に対応）
+  const params = new URLSearchParams(location.search);
+  const targetUrl = params.get("url") || params.get("material") || "";
+  const startIndex = params.get("startIndex") || "";
+
+  // 画面に教材名を表示（ファイル名を取得してデコード）
+  const lessonNameEl = document.getElementById("lessonName");
+  if (targetUrl) {
+    const fileName = decodeURIComponent(targetUrl.split('/').pop() || targetUrl);
+    lessonNameEl.textContent = fileName;
+  } else {
+    lessonNameEl.textContent = "教材が選択されていません";
+  }
+
+  // 各モードへ遷移する関数
+  function goMode(path) {
+    if (!targetUrl) {
+      alert("教材が選択されていません");
+      return;
+    }
+
+    // パスにすでに ? が含まれているか判定
+    const separator = path.includes('?') ? '&' : '?';
+    
+    // URLパラメータを組み立てて遷移
+    let nextUrl = `${path}${separator}url=${encodeURIComponent(targetUrl)}`;
+    if (startIndex !== "") {
+      nextUrl += `&startIndex=${startIndex}`;
+    }
+    
+    location.href = nextUrl;
+  }
+
+  // 戻るボタン
+  function goBack() {
+    location.href = 'index.html';
+  }
+</script>
+
+</body>
+</html>
