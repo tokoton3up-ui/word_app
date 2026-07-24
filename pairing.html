@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ペアリングモード</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
+      background: #ffffff;
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .hidden { display: none !important; }
+    
+    .screen {
+      width: 100vw;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      background: #ffffff;
+      position: relative;
+      box-sizing: border-box;
+      padding-top: 70px; /* 戻るボタンと被らないように上部余白を確保 */
+    }
+
+    /* 戻るボタン（他の画面と統一） */
+    .back-button {
+      position: absolute;
+      top: 15px;
+      left: 18px;
+      font-size: 32pt;
+      color: #555;
+      cursor: pointer;
+      line-height: 1;
+      padding: 5px;
+      z-index: 10;
+    }
+
+    /* ===== ペアリングカードのグリッド ===== */
+    .pair-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px; /* 枠どうしの隙間を適度に詰める */
+      width: 92%;
+      max-width: 450px;
+      margin: 0 auto 20px auto;
+    }
+
+    /* ===== ペアリングカード ===== */
+    .pair-card {
+      background: #ffffff;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 4px;
+      font-size: 11pt; /* ご指定の11pt */
+      font-weight: bold;
+      color: #222;
+      line-height: 1.2;
+      word-break: break-word; /* 長い単語は折り返す */
+      aspect-ratio: 1 / 1; /* 正方形にする */
+      cursor: pointer;
+      transition: transform 0.1s ease, background 0.2s ease;
+    }
+
+    /* 押したときに沈む */
+    .pair-card:active {
+      transform: scale(0.92);
+    }
+
+    /* ===== カード選択状態 ===== */
+    .pair-card.selected {
+      outline: 3px solid #4A90E2;
+      transform: scale(0.95);
+    }
+
+    /* 正解アニメ（淡い緑 → 縮小して消える） */
+    .pair-card.correct, .pair-card.matched {
+      background: #d8f5d0;
+      animation: correctAnim 0.35s forwards;
+      pointer-events: none;
+    }
+
+    @keyframes correctAnim {
+      0% { transform: scale(1); opacity: 1; }
+      100% { transform: scale(0.1); opacity: 0; }
+    }
+
+    /* 不正解アニメ（淡いピンク → 元に戻る） */
+    .pair-card.wrong {
+      background: #ffdede;
+      animation: wrongAnim 0.4s forwards;
+    }
+
+    @keyframes wrongAnim {
+      0% { transform: scale(1); }
+      50% { transform: scale(0.9); }
+      100% { transform: scale(1); background: #ffffff; }
+    }
+
+    /* ===== 結果画面のテキスト・ボタン ===== */
+    .group-time { font-size: 32pt; font-weight: bold; color: #222; margin-bottom: 10px; }
+    .group-best { font-size: 16pt; color: #666; margin-bottom: 30px; }
+    .final-time { font-size: 24pt; font-weight: bold; color: #222; margin-bottom: 10px; }
+    .final-best { font-size: 16pt; color: #666; margin-bottom: 30px; }
+
+    .result-button {
+      width: 80%;
+      max-width: 400px;
+      min-height: 60px;
+      font-size: 16pt;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      background: #f2f2f2;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      color: #222;
+      cursor: pointer;
+      margin-bottom: 15px;
+    }
+    .result-button:active {
+      transform: scale(0.98);
+      background: #e0e0e0;
+    }
+    .result-button.primary {
+      background: #4A90E2;
+      color: #ffffff;
+    }
+
+  </style>
+</head>
+
+<body>
+
+  <!-- ペアリング画面 -->
+  <div id="pairing" class="screen hidden">
+    <div class="back-button" onclick="goBack()">×</div>
+    <div id="pair-grid" class="pair-grid"></div>
+  </div>
+
+  <!-- グループ結果 -->
+  <div id="group-result" class="screen hidden">
+    <div style="margin-top: 30%;">
+      <div class="group-time" id="group-time-text"></div>
+      <div class="group-best" id="group-best-text"></div>
+      <button id="next-group" class="result-button primary">つづきへ</button>
+    </div>
+  </div>
+
+  <!-- 最終結果 -->
+  <div id="final-result" class="screen hidden">
+    <div style="margin-top: 30%;">
+      <div class="final-time" id="final-time-text"></div>
+      <div class="final-best" id="final-best-text"></div>
+      <button id="back" class="result-button">モード選択へ</button>
+    </div>
+  </div>
+
+<script>
+/* ============================
+   URL パラメータ取得（統一仕様）
+============================ */
+const params = new URLSearchParams(location.search);
+const targetUrl = params.get("url");
+const startIndex = params.get("startIndex") || "";
+
+/* ============================
+   CSV 読み込み（q, a 形式に統一）
+============================ */
+async function loadCSV(filename) {
+  const response = await fetch(filename);
+  if (!response.ok) throw new Error("Network error");
+  const text = await response.text();
+  return text.trim().split("\n").map((line, index) => {
+    const [q, a] = line.split(",");
+    return { id: index, q: (q || "").trim(), a: (a || "").trim() };
+  }).filter(item => item.q && item.a); // 空行を除外
+}
+
+let pairs = [];
+let groups = [];
+
+/* ============================
+   ページ読み込み
+============================ */
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!targetUrl) {
+    alert("教材が選択されていません");
+    return;
+  }
+  
+  try {
+    pairs = await loadCSV(targetUrl);
+
+    /* ============================
+       A方式：6語×複数グループに揃える
+       （余りは最初から補充して6語にする）
+    ============================ */
+    groups = [];
+    let index = 0;
+
+    while (index < pairs.length) {
+      let group = pairs.slice(index, index + 6);
+
+      // 6語未満なら最初から補充
+      if (group.length > 0 && group.length < 6) {
+        const need = 6 - group.length;
+        group = group.concat(pairs.slice(0, need));
+      }
+      
+      if(group.length === 6) {
+        groups.push(group);
+      }
+      index += 6;
+    }
+
+    pairing.classList.remove("hidden");
+    startPairing();
+  } catch(e) {
+    console.error(e);
+    alert("読み込みエラー");
+  }
+});
+
+/* ============================
+   戻るボタン処理
+============================ */
+function goBack() {
+  if (targetUrl) {
+    let backUrl = `mode-select.html?url=${encodeURIComponent(targetUrl)}`;
+    if (startIndex) backUrl += `&startIndex=${startIndex}`;
+    location.href = backUrl;
+  } else {
+    location.href = 'mode-select.html';
+  }
+}
+
+/* ============================
+   状態管理
+============================ */
+let currentGroup = 0;
+let wrongList = [];
+let wrongCount = 0;
+
+let bestGroupTime = null;
+let totalPairingTime = 0;
+
+let firstCard = null;
+let secondCard = null;
+let isChecking = false;
+
+let groupStart = 0;
+
+const pairing     = document.getElementById("pairing");
+const groupResult = document.getElementById("group-result");
+const finalResult = document.getElementById("final-result");
+
+/* ============================
+   ペアリング開始
+============================ */
+function startPairing() {
+  currentGroup = 0;
+  wrongList = [];
+  wrongCount = 0;
+  bestGroupTime = null;
+  totalPairingTime = 0;
+
+  startGroup();
+}
+
+/* ============================
+   グループ開始
+============================ */
+function startGroup() {
+  const group = groups[currentGroup];
+  const pairItems = [];
+  
+  group.forEach((p) => {
+    pairItems.push({ text: p.q, id: p.id });
+    pairItems.push({ text: p.a, id: p.id });
+  });
+
+  pairItems.sort(() => Math.random() - 0.5);
+
+  firstCard = null;
+  secondCard = null;
+  isChecking = false;
+
+  const grid = document.getElementById("pair-grid");
+  grid.innerHTML = "";
+
+  pairItems.forEach((item) => {
+    const card = document.createElement("div");
+    card.className = "pair-card";
+    card.textContent = item.text;
+    card.dataset.id = item.id;
+
+    card.onclick = () => {
+      if (isChecking) return;
+      if (card.classList.contains("matched")) return;
+      if (card === firstCard) return;
+
+      if (!firstCard) {
+        firstCard = card;
+        card.classList.add("selected");
+        return;
+      }
+
+      secondCard = card;
+      card.classList.add("selected");
+      checkPair();
+    };
+
+    grid.appendChild(card);
+  });
+
+  groupStart = performance.now();
+}
+
+/* ============================
+   ペア判定
+============================ */
+function checkPair() {
+  isChecking = true;
+
+  const id1 = firstCard.dataset.id;
+  const id2 = secondCard.dataset.id;
+
+  if (id1 === id2) {
+    firstCard.classList.add("matched");
+    secondCard.classList.add("matched");
+
+    setTimeout(() => {
+      firstCard.style.visibility = "hidden";
+      secondCard.style.visibility = "hidden";
+
+      resetSelection();
+      isChecking = false;
+
+      checkAllMatched();
+    }, 300);
+
+  } else {
+    firstCard.classList.add("wrong");
+    secondCard.classList.add("wrong");
+
+    wrongList.push(id1);
+    wrongList.push(id2);
+    wrongCount++;
+
+    setTimeout(() => {
+      firstCard.classList.remove("selected", "wrong");
+      secondCard.classList.remove("selected", "wrong");
+
+      resetSelection();
+      isChecking = false;
+    }, 600);
+  }
+}
+
+function resetSelection() {
+  firstCard = null;
+  secondCard = null;
+}
+
+/* ============================
+   全部消えたか確認
+============================ */
+function checkAllMatched() {
+  const remain = document.querySelectorAll(".pair-card:not(.matched)");
+  if (remain.length === 0) finishGroup();
+}
+
+/* ============================
+   グループ終了
+============================ */
+function finishGroup() {
+  const time = (performance.now() - groupStart) / 1000;
+  totalPairingTime += time;
+
+  if (bestGroupTime === null || time < bestGroupTime) {
+    bestGroupTime = time;
+  }
+
+  const last = (currentGroup === groups.length - 1);
+
+  showGroupResult(time, last);
+}
+
+/* ============================
+   グループ結果
+============================ */
+function showGroupResult(time, last) {
+  pairing.classList.add("hidden");
+  groupResult.classList.remove("hidden");
+
+  document.getElementById("group-time-text").textContent = `${time.toFixed(1)}秒`;
+  document.getElementById("group-best-text").textContent = `最短：${bestGroupTime.toFixed(1)}秒`;
+
+  const nextBtn = document.getElementById("next-group");
+
+  if (last) {
+    nextBtn.classList.add("hidden");
+    setTimeout(() => {
+      groupResult.classList.add("hidden");
+      afterAllGroups();
+    }, 1500);
+  } else {
+    nextBtn.classList.remove("hidden");
+    nextBtn.onclick = () => {
+      groupResult.classList.add("hidden");
+      currentGroup++;
+      pairing.classList.remove("hidden");
+      startGroup();
+    };
+  }
+}
+
+/* ============================
+   全グループ終了
+============================ */
+function afterAllGroups() {
+  showFinal();
+}
+
+/* ============================
+   最終結果
+============================ */
+function showFinal() {
+  finalResult.classList.remove("hidden");
+
+  document.getElementById("final-time-text").textContent = `合計：${totalPairingTime.toFixed(1)}秒`;
+  document.getElementById("final-best-text").textContent = `ベスト：${bestGroupTime.toFixed(1)}秒`;
+
+  document.getElementById("back").onclick = goBack;
+}
+</script>
+
+</body>
+</html>
