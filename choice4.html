@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>選択モード（4択）</title>
+  <style>
+    body {
+      margin: 0;
+      background: #ffffff;
+      font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
+      overflow: hidden;
+      touch-action: manipulation;
+    }
+    .hidden { display: none !important; }
+    
+    .screen {
+      width: 100vw; height: 100vh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: #ffffff;
+      position: relative;
+      box-sizing: border-box;
+      padding-top: 50px;
+    }
+
+    /* 戻るボタン（カードモードと統一） */
+    .back-button {
+      position: absolute;
+      top: 15px;
+      left: 18px;
+      font-size: 32pt;
+      color: #555;
+      cursor: pointer;
+      line-height: 1;
+      padding: 5px;
+      z-index: 10;
+    }
+
+    /* 問題文（拡大） */
+    .question-text {
+      font-size: 32pt;
+      font-weight: bold;
+      color: #222;
+      margin-bottom: 30px;
+      text-align: center;
+      width: 90%;
+      word-break: break-word;
+      line-height: 1.3;
+    }
+
+    /* 選択肢ボタン（タップしやすく拡大） */
+    .choice-button {
+      width: 85%;
+      max-width: 450px;
+      min-height: 70px;
+      margin: 8px 0;
+      font-size: 18pt;
+      font-weight: bold;
+      border-radius: 12px;
+      border: none;
+      background: #f2f2f2;
+      color: #222;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      cursor: pointer;
+      padding: 10px;
+      word-break: break-word;
+    }
+    .choice-button:active {
+      transform: scale(0.98);
+      background: #e0e0e0;
+    }
+
+    /* 正誤マーク（拡大） */
+    .judge-mark {
+      font-size: 100pt;
+      text-align: center;
+      margin-bottom: 20px;
+      line-height: 1;
+    }
+    .correct { color: #E85A5A; }
+    .wrong { color: #3F5F9F; }
+    
+    .correct-answer {
+      font-size: 24pt;
+      font-weight: bold;
+      color: #3F5F9F;
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    /* タップ案内 */
+    .tap-text {
+      margin-top: 30px;
+      font-size: 18pt;
+      color: #666;
+      text-align: center;
+      animation: blink 1.5s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    /* 結果画面・復習画面 */
+    .result-title {
+      font-size: 26pt;
+      font-weight: bold;
+      color: #222;
+      margin-bottom: 20px;
+    }
+    .result-score {
+      font-size: 32pt;
+      font-weight: bold;
+      color: #222;
+      margin-bottom: 10px;
+    }
+    .result-time {
+      font-size: 20pt;
+      color: #555;
+      margin-bottom: 10px;
+    }
+    .result-point {
+      font-size: 24pt;
+      font-weight: bold;
+      color: #E85A5A;
+      margin-bottom: 40px;
+    }
+    .result-button {
+      width: 80%;
+      max-width: 400px;
+      min-height: 60px;
+      font-size: 18pt;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      background: #f2f2f2;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      color: #222;
+      cursor: pointer;
+    }
+    .result-button:active {
+      transform: scale(0.98);
+      background: #e0e0e0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- 4択モード -->
+  <div id="choice-container" class="screen hidden">
+    <div class="back-button" onclick="goBack()">×</div>
+    <div id="question" class="question-text"></div>
+    <button id="choice1" class="choice-button"></button>
+    <button id="choice2" class="choice-button"></button>
+    <button id="choice3" class="choice-button"></button>
+    <button id="choice4" class="choice-button"></button>
+  </div>
+
+  <!-- 正誤表示 -->
+  <div id="judge-container" class="screen hidden"></div>
+
+  <!-- 復習開始案内 -->
+  <div id="review-start" class="screen hidden">
+    <div class="result-title">通常モード終了</div>
+    <div class="result-score">復習に進みます</div>
+    <div class="tap-text">タップして復習を開始</div>
+  </div>
+
+  <!-- 結果画面 -->
+  <div id="result-container" class="screen hidden">
+    <div class="result-title">今回のスコア</div>
+    <div id="result-score" class="result-score"></div>
+    <div id="result-time" class="result-time"></div>
+    <div id="result-point" class="result-point"></div>
+    <button id="btn-back-mode" class="result-button" onclick="goBack()">モード選択へ戻る</button>
+  </div>
+
+<script>
+/* ============================
+   URL パラメータ取得
+============================ */
+const params = new URLSearchParams(location.search);
+const targetUrl = params.get("url");
+const startIndex = params.get("startIndex") || "";
+const mode = params.get("mode") || "en2ja";  // en2ja (英➔日) / ja2en (日➔英)
+
+/* ============================
+   CSV 読み込み（q, a 形式に統一）
+============================ */
+async function loadCSV(filename) {
+  const response = await fetch(filename);
+  if (!response.ok) throw new Error("Network error");
+  const text = await response.text();
+  return text.trim().split("\n").map(line => {
+    const [q, a] = line.split(",");
+    return { q: (q || "").trim(), a: (a || "").trim() };
+  }).filter(item => item.q && item.a); // 空行を除外
+}
+
+let words = [];
+let currentIndex = 0;
+let correctCount = 0;
+let reviewQuestions = [];
+let reviewIndex = 0;
+let isReviewMode = false;
+
+const choiceContainer = document.getElementById("choice-container");
+const judgeContainer  = document.getElementById("judge-container");
+const resultContainer = document.getElementById("result-container");
+const questionEl = document.getElementById("question");
+const choiceButtons = [
+  document.getElementById("choice1"),
+  document.getElementById("choice2"),
+  document.getElementById("choice3"),
+  document.getElementById("choice4")
+];
+
+let choiceStartTime = 0;
+
+/* ============================
+   ページ読み込み
+============================ */
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!targetUrl) {
+    questionEl.textContent = "教材が選択されていません";
+    choiceContainer.classList.remove("hidden");
+    return;
+  }
+  try {
+    words = await loadCSV(targetUrl);
+    if(words.length < 4) {
+      alert("選択肢を作るため、単語は4つ以上必要です。");
+      goBack();
+      return;
+    }
+    startChoiceMode();
+  } catch(e) {
+    console.error(e);
+    questionEl.textContent = "読み込みエラー";
+    choiceContainer.classList.remove("hidden");
+  }
+});
+
+/* ============================
+   戻るボタン処理
+============================ */
+function goBack() {
+  if (targetUrl) {
+    let backUrl = `mode-select.html?url=${encodeURIComponent(targetUrl)}`;
+    if (startIndex) backUrl += `&startIndex=${startIndex}`;
+    location.href = backUrl;
+  } else {
+    location.href = 'mode-select.html';
+  }
+}
+
+/* ============================
+   通常モード開始
+============================ */
+function startChoiceMode() {
+  currentIndex = 0;
+  correctCount = 0;
+  reviewQuestions = [];
+  isReviewMode = false;
+  choiceStartTime = Date.now();
+
+  resultContainer.classList.add("hidden");
+  judgeContainer.classList.add("hidden");
+  choiceContainer.classList.remove("hidden");
+  showQuestion();
+}
+
+/* ============================
+   出題（方向切替対応）
+============================ */
+function showQuestion() {
+  judgeContainer.classList.add("hidden");
+
+  const item = isReviewMode ? reviewQuestions[reviewIndex] : words[currentIndex];
+
+  let questionText, correctText;
+  
+  // モードによる出題方向の切り替え
+  if (mode === "ja2en") {
+    questionText = item.a; // 問題: 日本語 (2列目)
+    correctText = item.q;  // 正解: 英語 (1列目)
+  } else {
+    questionText = item.q; // 問題: 英語 (1列目)
+    correctText = item.a;  // 正解: 日本語 (2列目)
+  }
+
+  questionEl.textContent = questionText;
+
+  // ダミーの選択肢を3つ作成
+  let choices = [correctText];
+  let safetyCounter = 0; // 無限ループ防止
+  while (choices.length < 4 && safetyCounter < 100) {
+    const randItem = words[Math.floor(Math.random() * words.length)];
+    const randText = (mode === "ja2en") ? randItem.q : randItem.a;
+    if (!choices.includes(randText)) {
+      choices.push(randText);
+    }
+    safetyCounter++;
+  }
+  
+  // 選択肢をシャッフル
+  choices.sort(() => Math.random() - 0.5);
+
+  // ボタンに割り当て
+  for (let i = 0; i < 4; i++) {
+    choiceButtons[i].textContent = choices[i];
+    choiceButtons[i].onclick = () => onAnswer(choices[i] === correctText, correctText, item);
+  }
+}
+
+/* ============================
+   正誤判定
+============================ */
+function onAnswer(isCorrect, correctText, item) {
+  // 連続タップ防止
+  for(let i=0; i<4; i++){ choiceButtons[i].onclick = null; }
+
+  choiceContainer.classList.add("hidden");
+  judgeContainer.classList.remove("hidden");
+
+  if (isCorrect) {
+    if (!isReviewMode) correctCount++;
+    judgeContainer.innerHTML = `<div class="judge-mark correct">◯</div>`;
+    setTimeout(nextQuestion, 800);
+  } else {
+    if (!isReviewMode) reviewQuestions.push(item);
+    judgeContainer.innerHTML = `
+      <div class="judge-mark wrong">×</div>
+      <div class="correct-answer">正解：<br>${correctText}</div>
+      <div class="tap-text">画面をタップして次へ</div>
+    `;
+    // 誤答時は画面タップで進む
+    setTimeout(() => {
+      judgeContainer.onclick = () => {
+        judgeContainer.onclick = null;
+        nextQuestion();
+      };
+    }, 100);
+  }
+}
+
+/* ============================
+   次の問題へ
+============================ */
+function nextQuestion() {
+  judgeContainer.innerHTML = "";
+  judgeContainer.classList.add("hidden");
+  judgeContainer.onclick = null;
+
+  if (!isReviewMode) {
+    currentIndex++;
+    if (currentIndex >= words.length) {
+      if (reviewQuestions.length > 0) {
+        showReviewStart();
+      } else {
+        showResult();
+      }
+      return;
+    }
+  } else {
+    reviewIndex++;
+    if (reviewIndex >= reviewQuestions.length) {
+      showResult();
+      return;
+    }
+  }
+
+  choiceContainer.classList.remove("hidden");
+  showQuestion();
+}
+
+/* ============================
+   復習開始
+============================ */
+function showReviewStart() {
+  choiceContainer.classList.add("hidden");
+  judgeContainer.classList.add("hidden");
+  resultContainer.classList.add("hidden");
+
+  const reviewStart = document.getElementById("review-start");
+  reviewStart.classList.remove("hidden");
+
+  // 少し待ってからタップ可能にする（誤タップ防止）
+  setTimeout(() => {
+    reviewStart.onclick = () => {
+      reviewStart.onclick = null;
+      reviewStart.classList.add("hidden");
+      isReviewMode = true;
+      reviewIndex = 0;
+      choiceContainer.classList.remove("hidden");
+      showQuestion();
+    };
+  }, 300);
+}
+
+/* ============================
+   結果画面
+============================ */
+function showResult() {
+  document.getElementById("result-score").textContent = `${correctCount} / ${words.length}`;
+
+  const sec = Math.floor((Date.now() - choiceStartTime) / 1000);
+  document.getElementById("result-time").textContent = `${sec} 秒`;
+
+  const point = Math.round((correctCount / words.length) * 100);
+  document.getElementById("result-point").textContent = `${point} 点`;
+
+  choiceContainer.classList.add("hidden");
+  resultContainer.classList.remove("hidden");
+}
+</script>
+
+</body>
+</html>
