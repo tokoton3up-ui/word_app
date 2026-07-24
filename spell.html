@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>スペルモード</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Yu Gothic UI", "Hiragino Kaku Gothic ProN", sans-serif;
+      background: #ffffff;
+      touch-action: manipulation;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    .hidden { display: none !important; }
+    
+    .screen {
+      width: 100vw;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      background: #ffffff;
+      position: relative;
+      box-sizing: border-box;
+      padding: 70px 20px 20px 20px;
+    }
+
+    /* 戻るボタン */
+    .back-button {
+      position: absolute;
+      top: 15px;
+      left: 18px;
+      font-size: 32pt;
+      color: #555;
+      cursor: pointer;
+      line-height: 1;
+      padding: 5px;
+      z-index: 10;
+    }
+
+    /* 問題カウント */
+    .progress-text {
+      font-size: 14pt;
+      color: #666;
+      margin-bottom: 20px;
+      font-weight: bold;
+    }
+
+    /* 問題（日本語）表示カード */
+    .question-card {
+      width: 100%;
+      max-width: 400px;
+      min-height: 100px;
+      background: #f8f9fa;
+      border: 2px solid #e0e0e0;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 15px;
+      font-size: 20pt;
+      font-weight: bold;
+      color: #222;
+      box-sizing: border-box;
+      margin-bottom: 25px;
+      word-break: break-word;
+    }
+
+    /* スペル入力フォーム */
+    .input-container {
+      width: 100%;
+      max-width: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+    }
+
+    .spell-input {
+      width: 100%;
+      height: 50px;
+      font-size: 18pt;
+      font-weight: bold;
+      text-align: center;
+      border: 2px solid #4A90E2;
+      border-radius: 8px;
+      outline: none;
+      box-sizing: border-box;
+      color: #222;
+      background: #fff;
+    }
+    .spell-input:focus {
+      border-color: #2a65ab;
+      box-shadow: 0 0 5px rgba(74, 144, 226, 0.5);
+    }
+
+    /* 答えるボタン */
+    .submit-button {
+      width: 100%;
+      height: 50px;
+      font-size: 16pt;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      background: #4A90E2;
+      color: #ffffff;
+      cursor: pointer;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+    .submit-button:active {
+      transform: scale(0.98);
+      background: #357abd;
+    }
+
+    /* 判定フィードバック */
+    .feedback-area {
+      margin-top: 20px;
+      font-size: 16pt;
+      font-weight: bold;
+      text-align: center;
+      min-height: 60px;
+    }
+    .feedback-correct { color: #2e7d32; }
+    .feedback-wrong { color: #c62828; }
+    .correct-answer-text {
+      font-size: 14pt;
+      color: #555;
+      margin-top: 5px;
+    }
+
+    /* ===== 結果画面 ===== */
+    .result-title { font-size: 24pt; font-weight: bold; color: #222; margin-bottom: 15px; }
+    .result-score { font-size: 32pt; font-weight: bold; color: #4A90E2; margin-bottom: 10px; }
+    .result-time { font-size: 16pt; color: #666; margin-bottom: 30px; }
+
+    .result-button {
+      width: 80%;
+      max-width: 400px;
+      min-height: 55px;
+      font-size: 16pt;
+      font-weight: bold;
+      border: none;
+      border-radius: 12px;
+      background: #f2f2f2;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      color: #222;
+      cursor: pointer;
+      margin-bottom: 15px;
+    }
+    .result-button:active {
+      transform: scale(0.98);
+      background: #e0e0e0;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- メイン学習画面 -->
+  <div id="quiz-screen" class="screen hidden">
+    <div class="back-button" onclick="goBack()">×</div>
+    
+    <div class="progress-text" id="progress-text">1 / 10</div>
+    <div class="question-card" id="question-text">日本語の意味</div>
+
+    <div class="input-container">
+      <input type="text" id="spell-input" class="spell-input" placeholder="英単語を入力" autocomplete="off" autocapitalize="off" spellcheck="false">
+      <button id="submit-btn" class="submit-button" onclick="checkAnswer()">答える</button>
+    </div>
+
+    <div id="feedback" class="feedback-area"></div>
+  </div>
+
+  <!-- 最終結果画面 -->
+  <div id="final-result" class="screen hidden">
+    <div style="margin-top: 20vh; text-align: center; width: 100%;">
+      <div class="result-title">完了！</div>
+      <div class="result-score" id="final-score-text">0 / 0</div>
+      <div class="result-time" id="final-time-text">タイム: 0.0秒</div>
+      <button id="back" class="result-button" onclick="goBack()">モード選択へ</button>
+    </div>
+  </div>
+
+<script>
+/* ============================
+   URL パラメータ取得
+============================ */
+const params = new URLSearchParams(location.search);
+const targetUrl = params.get("url");
+const startIndex = parseInt(params.get("startIndex") || "0", 10);
+
+/* ============================
+   CSV 読み込み
+============================ */
+async function loadCSV(filename) {
+  const response = await fetch(filename);
+  if (!response.ok) throw new Error("Network error");
+  const text = await response.text();
+  return text.trim().split("\n").map((line, index) => {
+    const [q, a] = line.split(",");
+    return { id: index, q: (q || "").trim(), a: (a || "").trim() };
+  }).filter(item => item.q && item.a);
+}
+
+let words = [];
+let currentIndex = 0;
+let correctCount = 0;
+let isChecking = false;
+let startTime = 0;
+
+/* ============================
+   初期化処理
+============================ */
+document.addEventListener("DOMContentLoaded", async () => {
+  if (!targetUrl) {
+    alert("教材が選択されていません");
+    return;
+  }
+
+  try {
+    const allData = await loadCSV(targetUrl);
+    
+    // startIndexから10問を取得（足りない場合は最後までの範囲）
+    words = allData.slice(startIndex, startIndex + 10);
+
+    if (words.length === 0) {
+      alert("データが見つかりませんでした");
+      return;
+    }
+
+    document.getElementById("quiz-screen").classList.remove("hidden");
+    startQuiz();
+  } catch(e) {
+    console.error(e);
+    alert("読み込みエラーが発生しました");
+  }
+});
+
+/* ============================
+   クイズ開始
+============================ */
+function startQuiz() {
+  currentIndex = 0;
+  correctCount = 0;
+  startTime = performance.now();
+  showQuestion();
+
+  // Enterキーで判定を実行
+  document.getElementById("spell-input").addEventListener("keypress", (e) => {
+    if (e.key === "Enter") {
+      checkAnswer();
+    }
+  });
+}
+
+/* ============================
+   問題表示
+============================ */
+function showQuestion() {
+  isChecking = false;
+  const current = words[currentIndex];
+  
+  document.getElementById("progress-text").textContent = `${currentIndex + 1} / ${words.length}`;
+  document.getElementById("question-text").textContent = current.a; // 日本語を表示
+  
+  const input = document.getElementById("spell-input");
+  input.value = "";
+  input.disabled = false;
+  input.focus();
+
+  document.getElementById("feedback").innerHTML = "";
+  document.getElementById("submit-btn").textContent = "答える";
+}
+
+/* ============================
+   正誤判定
+============================ */
+function checkAnswer() {
+  if (isChecking) {
+    // 判定後にボタンを押した場合は次の問題へ
+    nextQuestion();
+    return;
+  }
+
+  const input = document.getElementById("spell-input");
+  const userAns = input.value.trim().toLowerCase();
+  const current = words[currentIndex];
+  const correctAns = current.q.trim().toLowerCase();
+
+  if (!userAns) return; // 空入力は無視
+
+  isChecking = true;
+  input.disabled = true;
+
+  const feedback = document.getElementById("feedback");
+
+  if (userAns === correctAns) {
+    correctCount++;
+    feedback.innerHTML = `<div class="feedback-correct">〇 正解！</div>`;
+    setTimeout(() => {
+      nextQuestion();
+    }, 1000);
+  } else {
+    feedback.innerHTML = `
+      <div class="feedback-wrong">× 不正解...</div>
+      <div class="correct-answer-text">正解: <strong>${current.q}</strong></div>
+    `;
+    document.getElementById("submit-btn").textContent = "次へ";
+  }
+}
+
+/* ============================
+   次の問題へ
+============================ */
+function nextQuestion() {
+  currentIndex++;
+  if (currentIndex < words.length) {
+    showQuestion();
+  } else {
+    showResult();
+  }
+}
+
+/* ============================
+   結果表示
+============================ */
+function showResult() {
+  const totalTime = ((performance.now() - startTime) / 1000).toFixed(1);
+
+  document.getElementById("quiz-screen").classList.add("hidden");
+  document.getElementById("final-result").classList.remove("hidden");
+
+  document.getElementById("final-score-text").textContent = `${correctCount} / ${words.length} 正解`;
+  document.getElementById("final-time-text").textContent = `タイム: ${totalTime}秒`;
+}
+
+/* ============================
+   戻る処理
+============================ */
+function goBack() {
+  if (targetUrl) {
+    let backUrl = `mode-select.html?url=${encodeURIComponent(targetUrl)}`;
+    if (startIndex !== undefined) backUrl += `&startIndex=${startIndex}`;
+    location.href = backUrl;
+  } else {
+    location.href = 'mode-select.html';
+  }
+}
+</script>
+
+</body>
+</html>
